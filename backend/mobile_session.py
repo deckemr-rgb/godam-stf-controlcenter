@@ -547,6 +547,42 @@ class MobileSession:
         state = str(self._adb("shell", "dumpsys", "input_method", check=False))
         return "mInputShown=true" in state
 
+    def _dismiss_reply_mode(self) -> None:
+        """Batalkan mode balasan bila kotak komentar terbuka sebagai 'Replying to'.
+
+        Tap kotak teks pada sheet kadang mengenai tombol "Reply" komentar
+        pertama; komentar automasi harus berdiri sendiri. Chip "Replying to"
+        punya tombol tutup di ujung kanan barisnya — tekan bila terbaca di
+        pohon UI, kalau tidak, tekan koordinat kanan baris chip.
+        """
+        try:
+            nodes = self._nodes()
+        except MobileAutomationError:
+            return
+        chip = next(
+            (node for node in nodes if re.search(r"replying to|membalas", node.label, re.I)),
+            None,
+        )
+        if chip is None:
+            return
+        close = next(
+            (
+                node
+                for node in nodes
+                if re.search(r"remove reply|cancel reply|batal(?:kan)? membalas", node.label, re.I)
+                or (re.fullmatch(r"[✕×✖xX]", node.label.strip()) and node.clickable)
+            ),
+            None,
+        )
+        if close is not None:
+            self._tap(close)
+        else:
+            # ✕ sering bukan node tersendiri di pohon UI; posisinya di kanan
+            # baris chip.
+            self._tap_xy(int(self.width * 0.9), (chip.bounds[1] + chip.bounds[3]) // 2)
+        self.add_log("Mode balasan dibatalkan agar komentar berdiri sendiri.")
+        time.sleep(1)
+
     def _reel_post_comment(self, text: str) -> bool:
         """Kirim komentar lewat sheet komentar + tombol kirim biru Instagram.
 
@@ -594,6 +630,7 @@ class MobileSession:
             time.sleep(1)
             self._ensure_app_foreground(getattr(self, "_current_package", ""))
             return False
+        self._dismiss_reply_mode()
         sent = self._input_text(text)
         if not sent:
             self.add_log("Komentar tidak memiliki karakter yang didukung input ADB.")
@@ -1017,6 +1054,9 @@ class MobileSession:
                         else:
                             self.add_log("Like tidak terkonfirmasi pada tampilan perangkat.")
                     elif action == "comment":
+                        if comment_count < 1:
+                            self.add_log("Jumlah komentar 0; aksi komentar dilewati.")
+                            continue
                         comments = asyncio.run(
                             generate_comments(
                                 f"Postingan {spec.label} @{target}",

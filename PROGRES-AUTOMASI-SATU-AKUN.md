@@ -75,6 +75,21 @@ Sesi 2026-10-08 sore ditemukan:
    USB. Uji TikTok (like/repost/komentar) dan X menunggu jaringan pulih.
    WiFi perangkat tidak bisa disambungkan via adb (SecurityException di
    Android 14) — harus lewat UI Setelan atau fisik.
+   Diagnosa lanjutan: halaman WiFi menunjukkan "Available networks" KOSONG
+   (tidak ada jaringan dalam jangkauan sama sekali) dan tanpa SIM —
+   **router/hotspot farm benar-benar mati; perlu dinyalakan secara fisik.**
+
+## Perbaikan bug (commit kedua)
+
+- `comment_count` kini boleh 0 saat aksi komentar tidak dipilih (dulu 422);
+  loop aksi melewati komentar bila 0 dengan log jelas.
+- Endpoint menolak `actions` kosong dengan 422 (bukan diam-diam jatuh ke
+  default like+comment).
+- `_dismiss_reply_mode()`: bila kotak komentar terbuka sebagai "Replying to"
+  (tap kena tombol Reply komentar pertama), chip-nya dibatalkan dulu supaya
+  komentar automasi berdiri sendiri, bukan balasan.
+- Run TikTok offline terverifikasi berakhir rapi (needs_review, tanpa crash,
+  reservasi dilepas) — penanganan kegagalan sehat.
 - **Komentar kadang terposting sebagai balasan** ke komentar pertama (tap
   field bisa kena "Reply" pada layout tertentu). Kalau mau komentar berdiri
   sendiri: setelah keyboard muncul, deteksi chip "Replying to" lalu tap ✗-nya.

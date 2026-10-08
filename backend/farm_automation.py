@@ -38,7 +38,8 @@ class SingleAccountRunBody(BaseModel):
     username: str = Field(default="akun-aktif", max_length=100)
     target: str = Field(min_length=1, max_length=200)
     actions: list[str] = Field(default_factory=lambda: ["like", "comment"])
-    comment_count: int = Field(default=1, ge=1, le=20)
+    # Boleh 0 ketika aksi "comment" tidak dipilih.
+    comment_count: int = Field(default=1, ge=0, le=20)
     max_posts: int = Field(default=1, ge=1, le=25)
     tone: str = "positif"
 
@@ -202,6 +203,8 @@ async def start_single_account_run(
     serial = body.device_serial.strip()
     if not SERIAL_PATTERN.fullmatch(serial):
         raise HTTPException(status_code=422, detail="Serial perangkat tidak valid.")
+    if body.actions is not None and not any(str(action).strip() for action in body.actions):
+        raise HTTPException(status_code=422, detail="Pilih minimal satu aksi (like/komentar/share/repost).")
     try:
         actions = normalize_actions(platform, body.actions)
     except ValueError as error:
