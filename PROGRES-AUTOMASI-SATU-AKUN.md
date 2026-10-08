@@ -122,3 +122,21 @@ curl http://localhost:8000/api/farm-automation/runs
 Catatan debugging: `uiautomator dump` dari Git Bash Windows perlu
 `export MSYS_NO_PATHCONV=1` (path `/sdcard/...` diubah MSYS jadi path Windows).
 Jangan rekam screenshot adb tiap 2 detik selama run — bikin timeout ADB.
+
+## WiFi (2026-10-08 malam) — butuh satu aksi fisik
+
+- Semua perangkat farm offline: WiFi aktif tapi tidak tersambung, tanpa SIM,
+  dan scan tidak melihat jaringan apa pun (router/hotspot mati).
+- PC host online via WiFi "Admin Medsos LT2" (192.168.100.x). Password
+  berhasil diambil dari Windows: tersimpan di R5CT10BPZAM via UI Add network.
+- Asosiasi ke "Admin Medsos LT2" SUKSES (password benar, AP sama dengan PC),
+  TAPI router tidak pernah memberi IP ("Connecting…" menetap, DHCP kosong).
+  Kemungkinan: whitelist MAC, batas jumlah klien, atau portal login.
+- Jaringan asli farm yang tersimpan di perangkat: **"AndroidAP_9843"**
+  (hotspot ponsel) dan **"IT Room Center"** (router) — keduanya mati.
+- **Aksi fisik yang diminta: nyalakan hotspot "AndroidAP_9843" ATAU router
+  "IT Room Center".** Perangkat sudah menyimpan keduanya dan akan
+  tersambung otomatis begitu sinyalnya ada. Alternatif: daftarkan/perbolehkan
+  perangkat di router "Admin Medsos LT2".
+- Perangkat R5CT10BPZAM juga dikunci ke orientasi portrait
+  (accelerometer_rotation=0) saat debugging WiFi.
