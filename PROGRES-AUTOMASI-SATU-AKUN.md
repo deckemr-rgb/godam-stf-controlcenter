@@ -140,3 +140,21 @@ Jangan rekam screenshot adb tiap 2 detik selama run — bikin timeout ADB.
   perangkat di router "Admin Medsos LT2".
 - Perangkat R5CT10BPZAM juga dikunci ke orientasi portrait
   (accelerometer_rotation=0) saat debugging WiFi.
+
+## Provisioning WiFi ke 10 perangkat (2026-10-08 malam) — kesimpulan final
+
+- Script `scripts/sambungkan_wifi_semua.py` berhasil menambahkan jaringan
+  "Admin Medsos LT2" (password dari Windows) ke SELURUH 10 perangkat via UI.
+- Hasil: 0/10 online — router menolak memberi IP ke SEMUA perangkat
+  (asosiasi/password diterima, DHCP tidak pernah datang).
+- Kesimpulan tegas: router "Admin Medsos LT2" bersifat selektif terhadap
+  klien (whitelist MAC / batas klien / portal). BUKAN masalah perangkat
+  dan BUKAN masalah automasi.
+- Jalan keluar (pilih satu):
+  1. Nyalakan fisik hotspot "AndroidAP_9843" ATAU router "IT Room Center"
+     (sudah tersimpan di semua perangkat → auto-reconnect, nol konfigurasi).
+  2. Daftarkan MAC perangkat di router "Admin Medsos LT2" (MAC tertera di
+     Setelan Wi-Fi → detail jaringan tiap perangkat, contoh R5CT10BPZAM:
+     0e:26:27:d8:ac:16).
+- Script dapat diulang kapan saja: `python scripts/sambungkan_wifi_semua.py`
+  (perangkat yang sudah online dilewati otomatis).
