@@ -1,0 +1,294 @@
+{
+  "run_id": "7e3fa1e8d11345f6b29e6a7fc23cbe1e",
+  "platform": "instagram",
+  "target": "https://www.instagram.com/tvrakyat.official/",
+  "status": "completed",
+  "summary": {
+    "total": 16,
+    "running": 0,
+    "completed": 10,
+    "error": 6
+  },
+  "jobs": [
+    {
+      "serial": "R5CT10BPZAM",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / R5CT10BPZAM",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Postingan sudah disukai atau tombol like tidak terlihat.",
+        "Tombol komentar tidak ditemukan pada tampilan perangkat.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "R5CT10BPZAM",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "5159545149373598",
+      "status": "error",
+      "message": "Device is being used or not available",
+      "logs": [
+        "Gagal: Device is being used or not available"
+      ],
+      "result": null
+    },
+    {
+      "serial": "344831514a373598",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / 344831514a373598",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Postingan sudah disukai atau tombol like tidak terlihat.",
+        "Tombol komentar tidak ditemukan pada tampilan perangkat.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "344831514a373598",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "R5CT844478H",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / R5CT844478H",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Postingan sudah disukai atau tombol like tidak terlihat.",
+        "Tombol komentar tidak ditemukan pada tampilan perangkat.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "R5CT844478H",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "4d394b5856373598",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / 4d394b5856373598",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Postingan sudah disukai atau tombol like tidak terlihat.",
+        "Tombol komentar tidak ditemukan pada tampilan perangkat.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "4d394b5856373598",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "5542355348373598",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / 5542355348373598",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Like Instagram dikirim dari perangkat Android.",
+        "Kotak komentar Android tidak ditemukan.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "5542355348373598",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "R5CT7076ZQP",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / R5CT7076ZQP",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Postingan sudah disukai atau tombol like tidak terlihat.",
+        "Tombol komentar tidak ditemukan pada tampilan perangkat.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "R5CT7076ZQP",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "R5CT21CZC9T",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / R5CT21CZC9T",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Like Instagram dikirim dari perangkat Android.",
+        "Kotak komentar Android tidak ditemukan.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "R5CT21CZC9T",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "611287682b3f7ece",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / 611287682b3f7ece",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Postingan sudah disukai atau tombol like tidak terlihat.",
+        "Tombol komentar tidak ditemukan pada tampilan perangkat.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "611287682b3f7ece",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "R5CT50AYF5B",
+      "status": "error",
+      "message": "Accessibility tree Android tidak dapat dibaca.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / R5CT50AYF5B",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Gagal: Accessibility tree Android tidak dapat dibaca.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": null
+    },
+    {
+      "serial": "5ccec5e7f4d5d42c",
+      "status": "error",
+      "message": "Accessibility tree Android tidak dapat dibaca.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / 5ccec5e7f4d5d42c",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Gagal: Accessibility tree Android tidak dapat dibaca.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": null
+    },
+    {
+      "serial": "R5CTB0GPS5N",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / R5CTB0GPS5N",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Postingan sudah disukai atau tombol like tidak terlihat.",
+        "Tombol komentar tidak ditemukan pada tampilan perangkat.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "R5CTB0GPS5N",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "R5CT216P8HB",
+      "status": "error",
+      "message": "Accessibility tree Android tidak dapat dibaca.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / R5CT216P8HB",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Gagal: Accessibility tree Android tidak dapat dibaca.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": null
+    },
+    {
+      "serial": "611287641f3f7ece",
+      "status": "error",
+      "message": "Accessibility tree Android tidak dapat dibaca.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / 611287641f3f7ece",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Gagal: Accessibility tree Android tidak dapat dibaca.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": null
+    },
+    {
+      "serial": "R5CTC23TG1M",
+      "status": "completed",
+      "message": "Otomasi Instagram selesai di perangkat STF.",
+      "logs": [
+        "Perangkat berhasil direservasi lewat STF.",
+        "Target eksekusi: STF / R5CTC23TG1M",
+        "Platform: Instagram · akun perangkat: akun-aktif",
+        "Memproses postingan 1/1.",
+        "Postingan sudah disukai atau tombol like tidak terlihat.",
+        "Tombol komentar tidak ditemukan pada tampilan perangkat.",
+        "Reservasi otomatis dilepas."
+      ],
+      "result": {
+        "comments_posted": 0,
+        "posts_processed": 1,
+        "platform": "instagram",
+        "device_serial": "R5CTC23TG1M",
+        "execution_target": "stf"
+      }
+    },
+    {
+      "serial": "5849565937373698",
+      "status": "error",
+      "message": "Device is being used or not available",
+      "logs": [
+        "Gagal: Device is being used or not available"
+      ],
+      "result": null
+    }
+  ]
+}

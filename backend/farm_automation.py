@@ -1,0 +1,309 @@
+"""Orkestrasi massal Godam di atas perangkat DeviceFarmer STF."""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from comment_ai import TONES, normalize_tone
+from live_session import _SESSIONS
+from ml_engagement import AccountProfile, planner
+from mobile_session import MobileSession, PLATFORMS, normalize_actions, platform_action_options
+from stf_api import SERIAL_PATTERN, _require_godam_session
+from run_reports import summarize, save_report, read_report, list_reports
+
+
+router = APIRouter(prefix="/api/farm-automation", tags=["farm-automation"])
+_RUNS: dict[str, dict[str, Any]] = {}
+
+
+class FarmRunBody(BaseModel):
+    platform: str = "instagram"
+    device_serials: list[str]
+    username: str = Field(default="akun-aktif", max_length=100)
+    target: str = Field(min_length=1, max_length=200)
+    comment_count: int = Field(default=1, ge=1, le=20)
+    max_posts: int = Field(default=1, ge=1, le=25)
+    tone: str = "positif"
+
+
+class SingleAccountRunBody(BaseModel):
+    """Run automasi untuk tepat satu perangkat dan satu akun, tanpa switch."""
+
+    platform: str = "instagram"
+    device_serial: str = Field(min_length=1, max_length=100)
+    username: str = Field(default="akun-aktif", max_length=100)
+    target: str = Field(min_length=1, max_length=200)
+    actions: list[str] = Field(default_factory=lambda: ["like", "comment"])
+    comment_count: int = Field(default=1, ge=1, le=20)
+    max_posts: int = Field(default=1, ge=1, le=25)
+    tone: str = "positif"
+
+
+class MlAccountBody(BaseModel):
+    account_id: str = Field(min_length=1, max_length=100)
+    topics: list[str] = Field(default_factory=list)
+    success_rate: float = Field(default=0.5, ge=0, le=1)
+    daily_actions: int = Field(default=0, ge=0, le=1000)
+    daily_limit: int = Field(default=20, ge=1, le=1000)
+    cooldown_minutes: int = Field(default=60, ge=1, le=10080)
+    minutes_since_last_use: int = Field(default=1440, ge=0, le=100000)
+    logged_in: bool = True
+
+
+class MlPreviewBody(BaseModel):
+    platform: str = "instagram"
+    caption: str = Field(min_length=1, max_length=5000)
+    tone: str = "positif"
+    target_topics: list[str] = Field(default_factory=list)
+    recent_comments: list[str] = Field(default_factory=list)
+    accounts: list[MlAccountBody] = Field(default_factory=list)
+    device_serials: list[str] = Field(default_factory=list)
+    current_accounts: dict[str, str] = Field(default_factory=dict)
+
+
+class MlFeedbackBody(BaseModel):
+    plan_id: str = Field(min_length=8, max_length=64)
+    action: str
+    accepted: bool
+
+
+@router.get("/platforms")
+def platforms(_: dict[str, Any] | None = Depends(_require_godam_session)) -> dict[str, Any]:
+    return {
+        "platforms": [
+            {
+                "id": platform_id,
+                "label": spec.label,
+                "packages": list(spec.packages),
+                "actions": platform_action_options(platform_id),
+            }
+            for platform_id, spec in PLATFORMS.items()
+        ]
+    }
+
+
+@router.post("/ml/preview")
+def ml_preview(
+    body: MlPreviewBody,
+    _: dict[str, Any] | None = Depends(_require_godam_session),
+) -> dict[str, Any]:
+    """Buat rencana ML tanpa menjalankan aksi pada akun atau perangkat."""
+    platform = body.platform.strip().lower()
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=422, detail="Platform sosial tidak didukung.")
+    if not body.caption.strip():
+        raise HTTPException(status_code=422, detail="Teks konteks tidak boleh kosong.")
+    if len(body.accounts) > 100 or len(body.device_serials) > 32:
+        raise HTTPException(status_code=422, detail="Maksimal 100 akun dan 32 perangkat per preview.")
+    serials = list(dict.fromkeys(item.strip() for item in body.device_serials if item.strip()))
+    if any(not SERIAL_PATTERN.fullmatch(serial) for serial in serials):
+        raise HTTPException(status_code=422, detail="Ada serial perangkat yang tidak valid.")
+    accounts = [
+        AccountProfile(
+            account_id=item.account_id.strip(),
+            topics=[topic.strip() for topic in item.topics if topic.strip()],
+            success_rate=item.success_rate,
+            daily_actions=item.daily_actions,
+            daily_limit=item.daily_limit,
+            cooldown_minutes=item.cooldown_minutes,
+            minutes_since_last_use=item.minutes_since_last_use,
+            logged_in=item.logged_in,
+        )
+        for item in body.accounts
+    ]
+    return planner.plan(
+        platform=platform,
+        caption=body.caption.strip(),
+        tone=normalize_tone(body.tone),
+        target_topics=[topic.strip() for topic in body.target_topics if topic.strip()],
+        recent_comments=[item.strip() for item in body.recent_comments if item.strip()],
+        accounts=accounts,
+        device_serials=serials,
+        current_accounts={key.strip(): value.strip() for key, value in body.current_accounts.items()},
+    )
+
+
+@router.post("/ml/feedback")
+def ml_feedback(
+    body: MlFeedbackBody,
+    _: dict[str, Any] | None = Depends(_require_godam_session),
+) -> dict[str, Any]:
+    """Perbarui bobot online dari keputusan operator, tanpa menjalankan aksi."""
+    try:
+        return planner.learn(body.plan_id, body.action.strip().lower(), body.accepted)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@router.post("/runs")
+async def start_run(
+    body: FarmRunBody,
+    _: dict[str, Any] | None = Depends(_require_godam_session),
+) -> dict[str, Any]:
+    platform = body.platform.strip().lower()
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=422, detail="Platform sosial tidak didukung.")
+    tone_input = body.tone.strip().lower()
+    if tone_input not in TONES:
+        raise HTTPException(status_code=422, detail=f"Tone harus salah satu dari: {', '.join(TONES)}")
+    serials = list(dict.fromkeys(serial.strip() for serial in body.device_serials if serial.strip()))
+    if not serials or len(serials) > 32:
+        raise HTTPException(status_code=422, detail="Pilih 1 sampai 32 perangkat.")
+    if any(not SERIAL_PATTERN.fullmatch(serial) for serial in serials):
+        raise HTTPException(status_code=422, detail="Ada serial perangkat yang tidak valid.")
+
+    run_id = uuid.uuid4().hex
+    jobs: dict[str, str] = {}
+    for serial in serials:
+        token = uuid.uuid4().hex
+        session = MobileSession(token, serial)
+        _SESSIONS[token] = session
+        jobs[serial] = token
+        await session.start_engagement(
+            platform,
+            body.username.strip() or "akun-aktif",
+            body.target.strip(),
+            body.comment_count,
+            body.max_posts,
+            normalize_tone(tone_input),
+        )
+
+    _RUNS[run_id] = {
+        "id": run_id,
+        "platform": platform,
+        "target": body.target.strip(),
+        "jobs": jobs,
+    }
+    return {"run_id": run_id, "platform": platform, "devices": serials, "status": "started"}
+
+
+@router.post("/single-account/runs")
+async def start_single_account_run(
+    body: SingleAccountRunBody,
+    _: dict[str, Any] | None = Depends(_require_godam_session),
+) -> dict[str, Any]:
+    """Automasi like/komentar/share/repost untuk tepat satu akun perangkat.
+
+    Sengaja hanya menerima satu serial: mode ini tidak melakukan pergantian
+    akun, sehingga hasilnya mudah diaudit sebelum dipakai ke banyak akun.
+    """
+    platform = body.platform.strip().lower()
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=422, detail="Platform sosial tidak didukung.")
+    tone_input = body.tone.strip().lower()
+    if tone_input not in TONES:
+        raise HTTPException(status_code=422, detail=f"Tone harus salah satu dari: {', '.join(TONES)}")
+    serial = body.device_serial.strip()
+    if not SERIAL_PATTERN.fullmatch(serial):
+        raise HTTPException(status_code=422, detail="Serial perangkat tidak valid.")
+    try:
+        actions = normalize_actions(platform, body.actions)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    username = body.username.strip() or "akun-aktif"
+    run_id = uuid.uuid4().hex
+    token = uuid.uuid4().hex
+    session = MobileSession(token, serial)
+    _SESSIONS[token] = session
+    await session.start_engagement(
+        platform,
+        username,
+        body.target.strip(),
+        body.comment_count,
+        body.max_posts,
+        normalize_tone(tone_input),
+        actions,
+    )
+    _RUNS[run_id] = {
+        "id": run_id,
+        "platform": platform,
+        "target": body.target.strip(),
+        "mode": "single-account",
+        "account": username,
+        "actions": actions,
+        "jobs": {serial: token},
+    }
+    return {
+        "run_id": run_id,
+        "platform": platform,
+        "devices": [serial],
+        "account": username,
+        "actions": actions,
+        "mode": "single-account",
+        "status": "started",
+    }
+
+
+def _run_payload(run: dict[str, Any]) -> dict[str, Any]:
+    jobs = []
+    for serial, token in run["jobs"].items():
+        session = _SESSIONS.get(token)
+        jobs.append(
+            {
+                "serial": serial,
+                "token": token,
+                "status": getattr(session, "status", "missing"),
+                "message": getattr(session, "message", "Sesi tidak ditemukan."),
+                "logs": list(getattr(session, "logs", [])[-12:]),
+                "result": getattr(session, "result", None),
+            }
+        )
+    report = summarize({
+        "run_id": run["id"],
+        "platform": run["platform"],
+        "target": run["target"],
+        "mode": run.get("mode", "multi-device"),
+        "account": run.get("account"),
+        "actions": run.get("actions"),
+        "jobs": jobs,
+    })
+    if report["status"] != "running":
+        try:
+            save_report(report)
+        except OSError:
+            report["persistence_error"] = "Laporan belum tersimpan ke disk."
+    return report
+
+
+@router.get("/runs")
+def get_runs(_: dict[str, Any] | None = Depends(_require_godam_session)) -> dict[str, Any]:
+    live = [_run_payload(run) for run in reversed(list(_RUNS.values()))]
+    live_ids = {run["run_id"] for run in live}
+    archived = [run for run in list_reports() if run["run_id"] not in live_ids]
+    return {"runs": (live + archived)[:100], "history_limit": 100}
+
+
+@router.get("/runs/{run_id}")
+def get_run(
+    run_id: str,
+    _: dict[str, Any] | None = Depends(_require_godam_session),
+) -> dict[str, Any]:
+    run = _RUNS.get(run_id)
+    if not run:
+        archived = read_report(run_id)
+        if archived:
+            return archived
+        raise HTTPException(status_code=404, detail="Run farm tidak ditemukan.")
+    return _run_payload(run)
+
+
+@router.post("/runs/{run_id}/stop")
+async def stop_run(
+    run_id: str,
+    _: dict[str, Any] | None = Depends(_require_godam_session),
+) -> dict[str, Any]:
+    run = _RUNS.get(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run farm tidak ditemukan.")
+    for token in run["jobs"].values():
+        session = _SESSIONS.get(token)
+        if session and session.status in {"starting", "running"}:
+            await session.close()
+    return _run_payload(run)

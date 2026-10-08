@@ -1,0 +1,218 @@
+# Overlay DeviceFarmer STF untuk stack Godam.
+# Jalankan bersama compose utama:
+# docker compose -f docker-compose.yml -f docker-compose.stf.yml up -d --build
+
+x-stf: &stf
+  image: ${STF_IMAGE:-devicefarmer/stf:latest}
+  restart: unless-stopped
+  environment:
+    TZ: ${TZ:-Asia/Jakarta}
+    PORT: 7100
+    RETHINKDB_PORT_28015_TCP: tcp://stf-rethinkdb:28015
+    SECRET: ${STF_SECRET:?STF_SECRET wajib diisi di .env}
+    STF_ADMIN_EMAIL: ${STF_ADMIN_EMAIL:-admin@localhost}
+    STF_ADMIN_NAME: ${STF_ADMIN_NAME:-Godam Administrator}
+  depends_on: &stf-database-ready
+    stf-migrate:
+      condition: service_completed_successfully
+
+x-stf-http: &stf-http
+  <<: *stf
+  healthcheck:
+    test: ["CMD", "node", "-e", "require('net').connect(7100, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"]
+    interval: 5s
+    timeout: 5s
+    retries: 36
+
+x-stf-triproxy: &stf-triproxy
+  <<: *stf
+  healthcheck:
+    test: ["CMD", "node", "-e", "require('net').connect(7112, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"]
+    interval: 5s
+    timeout: 5s
+    retries: 36
+
+x-stf-messaging-ready: &stf-messaging-ready
+  <<: *stf-database-ready
+  stf-triproxy-app:
+    condition: service_healthy
+  stf-triproxy-dev:
+    condition: service_healthy
+
+services:
+  backend:
+    environment:
+      STF_URL: http://stf-proxy:7100
+      STF_PUBLIC_URL: ${STF_PUBLIC_URL:-http://localhost:7100}
+      STF_TOKEN: ${STF_TOKEN:-}
+      STF_VERIFY_SSL: ${STF_VERIFY_SSL:-true}
+      STF_TIMEOUT_SECONDS: ${STF_TIMEOUT_SECONDS:-15}
+      STF_REQUIRE_GODAM_AUTH: ${STF_REQUIRE_GODAM_AUTH:-true}
+      STF_ADB_HOST: stf-adb
+      STF_ADB_PORT: 5037
+      STF_ADB_TIMEOUT_SECONDS: ${STF_ADB_TIMEOUT_SECONDS:-30}
+    depends_on:
+      stf-proxy:
+        condition: service_healthy
+      stf-adb:
+        condition: service_started
+
+  stf-rethinkdb:
+    image: rethinkdb:2.4.2
+    restart: unless-stopped
+    command: rethinkdb --bind all --cache-size 2048
+    volumes:
+      - stf-rethinkdb-data:/data
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/28015"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  stf-adb:
+    image: devicefarmer/adb:latest
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+
+  stf-migrate:
+    <<: *stf
+    command: stf migrate
+    restart: "no"
+    depends_on:
+      stf-rethinkdb:
+        condition: service_healthy
+
+  stf-triproxy-app:
+    <<: *stf-triproxy
+    command: stf triproxy app
+
+  stf-triproxy-dev:
+    <<: *stf-triproxy
+    command: stf triproxy dev
+
+  stf-processor:
+    <<: *stf
+    command: >-
+      stf processor compose
+      --connect-app-dealer tcp://stf-triproxy-app:7112
+      --connect-dev-dealer tcp://stf-triproxy-dev:7112
+    depends_on: *stf-messaging-ready
+
+  stf-reaper:
+    <<: *stf
+    command: >-
+      stf reaper compose
+      --connect-push tcp://stf-triproxy-dev:7113
+      --connect-sub tcp://stf-triproxy-app:7111
+    depends_on: *stf-messaging-ready
+
+  stf-groups-engine:
+    <<: *stf
+    command: >-
+      stf groups-engine
+      --connect-push tcp://stf-triproxy-app:7113
+      --connect-sub tcp://stf-triproxy-app:7111
+      --connect-push-dev tcp://stf-triproxy-dev:7113
+      --connect-sub-dev tcp://stf-triproxy-dev:7111
+    depends_on: *stf-messaging-ready
+
+  stf-auth:
+    <<: *stf-http
+    command: stf auth-mock --app-url ${STF_PUBLIC_URL:-http://localhost:7100}/
+
+  stf-app:
+    <<: *stf-http
+    command: >-
+      stf app
+      --auth-url ${STF_PUBLIC_URL:-http://localhost:7100}/auth/mock/
+      --websocket-url ${STF_PUBLIC_URL:-http://localhost:7100}/
+
+  stf-api:
+    <<: *stf-http
+    command: >-
+      stf api
+      --connect-push tcp://stf-triproxy-app:7113
+      --connect-sub tcp://stf-triproxy-app:7111
+      --connect-push-dev tcp://stf-triproxy-dev:7113
+      --connect-sub-dev tcp://stf-triproxy-dev:7111
+    depends_on: *stf-messaging-ready
+
+  stf-websocket:
+    <<: *stf-http
+    command: >-
+      stf websocket --storage-url http://stf-proxy:7100/
+      --connect-push tcp://stf-triproxy-app:7113
+      --connect-sub tcp://stf-triproxy-app:7111
+    depends_on: *stf-messaging-ready
+
+  stf-storage:
+    <<: *stf-http
+    command: stf storage-temp
+
+  stf-storage-image:
+    <<: *stf-http
+    command: stf storage-plugin-image --storage-url http://stf-storage:7100/
+
+  stf-storage-apk:
+    <<: *stf-http
+    command: stf storage-plugin-apk --storage-url http://stf-storage:7100/
+
+  stf-provider:
+    <<: *stf
+    command: >-
+      stf provider --name godam-compose --adb-host stf-adb
+      --public-ip ${STF_PROVIDER_PUBLIC_IP:-127.0.0.1}
+      --min-port 7400 --max-port 7500
+      --storage-url http://stf-proxy:7100/
+      --connect-sub tcp://stf-triproxy-dev:7111
+      --connect-push tcp://stf-triproxy-dev:7113
+    depends_on:
+      stf-migrate:
+        condition: service_completed_successfully
+      stf-triproxy-app:
+        condition: service_healthy
+      stf-triproxy-dev:
+        condition: service_healthy
+      stf-adb:
+        condition: service_started
+      stf-proxy:
+        condition: service_healthy
+      stf-processor:
+        condition: service_started
+      stf-groups-engine:
+        condition: service_started
+    ports:
+      - "${STF_PROVIDER_BIND_ADDRESS:-127.0.0.1}:7400-7500:7400-7500"
+
+  stf-proxy:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    volumes:
+      - ./docker/stf-nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "${STF_BIND_ADDRESS:-127.0.0.1}:7100:7100"
+    depends_on:
+      stf-auth:
+        condition: service_healthy
+      stf-app:
+        condition: service_healthy
+      stf-api:
+        condition: service_healthy
+      stf-websocket:
+        condition: service_healthy
+      stf-storage:
+        condition: service_healthy
+      stf-storage-image:
+        condition: service_healthy
+      stf-storage-apk:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:7100/auth/mock/"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+
+volumes:
+  stf-rethinkdb-data:

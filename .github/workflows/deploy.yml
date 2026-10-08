@@ -1,0 +1,49 @@
+name: Deploy VPS
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip when VPS secrets are missing
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ -z "$VPS_HOST" ]; then
+            echo "VPS_HOST is not set; skipping remote deploy."
+            echo "skip=true" >> "$GITHUB_ENV"
+          else
+            echo "skip=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Deploy over SSH
+        if: env.skip != 'true'
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd /opt/godam
+            git fetch origin
+            git checkout main
+            git pull --ff-only origin main
+
+            # Database milik VPS sendiri butuh sandi. Dibuat sekali di sini
+            # supaya deploy tidak gagal di mesin yang .env-nya belum punya,
+            # dan supaya sandinya tidak pernah ada di dalam repo.
+            touch .env
+            if ! grep -q '^POSTGRES_PASSWORD=' .env; then
+              echo "POSTGRES_PASSWORD=$(openssl rand -hex 32)" >> .env
+              echo "POSTGRES_PASSWORD dibuat otomatis."
+            fi
+
+            docker compose up -d --build --remove-orphans
+            docker image prune -f

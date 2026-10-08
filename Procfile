@@ -1,0 +1,1 @@
+worker: cd backend && celery -A celery_app.celery_app worker --loglevel=info --pool=solo

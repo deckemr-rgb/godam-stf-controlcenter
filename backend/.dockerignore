@@ -1,0 +1,13 @@
+# Jangan salin hal-hal ini ke dalam Docker image
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.comment-state/
+.pytest_cache/
+.mypy_cache/
+.git/
+.gitignore

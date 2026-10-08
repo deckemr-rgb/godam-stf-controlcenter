@@ -1,0 +1,53 @@
+services:
+  - type: web
+    name: instagram-bot-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && playwright install chromium
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: REDIS_URL
+        sync: false
+      - key: CREDENTIAL_ENCRYPTION_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: INSTAGRAM_SESSION_COOKIE
+        value: sessionid
+      - key: COMMENT_STATE_DIR
+        value: /tmp/comment-state
+      - key: PLAYWRIGHT_TIMEOUT_MS
+        value: "10000"
+      - key: PLAYWRIGHT_NAVIGATION_TIMEOUT_MS
+        value: "30000"
+      - key: CELERY_CONCURRENCY
+        value: "1"
+      - key: RATE_LIMIT_PER_IP_PER_DAY
+        value: "10"
+      - key: COMMENT_CACHE_TTL_SECONDS
+        value: "3600"
+
+  - type: worker
+    name: instagram-bot-worker
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && playwright install chromium
+    startCommand: celery -A celery_app.celery_app worker --loglevel=info --pool=solo
+    envVars:
+      - key: REDIS_URL
+        sync: false
+      - key: CREDENTIAL_ENCRYPTION_KEY
+        sync: false
+      - key: INSTAGRAM_SESSION_COOKIE
+        value: sessionid
+      - key: COMMENT_STATE_DIR
+        value: /tmp/comment-state
+      - key: PLAYWRIGHT_TIMEOUT_MS
+        value: "10000"
+      - key: PLAYWRIGHT_NAVIGATION_TIMEOUT_MS
+        value: "30000"
+      - key: CELERY_CONCURRENCY
+        value: "1"
+      - key: COMMENT_CACHE_TTL_SECONDS
+        value: "3600"

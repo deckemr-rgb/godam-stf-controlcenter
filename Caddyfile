@@ -1,0 +1,15 @@
+{
+	email {$ACME_EMAIL}
+}
+
+auto-comment.tech, www.auto-comment.tech {
+	encode gzip zstd
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+	reverse_proxy frontend:3000
+}
+
+http://187.77.113.63 {
+	redir https://auto-comment.tech{uri} 308
+}

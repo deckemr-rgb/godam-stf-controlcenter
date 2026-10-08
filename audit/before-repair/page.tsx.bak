@@ -1,0 +1,327 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import styles from "./page.module.css";
+
+const TOKEN_KEY = "ig-tools-token";
+const PLATFORM_OPTIONS = [
+  { id: "instagram", label: "Instagram", mark: "IG" },
+  { id: "tiktok", label: "TikTok", mark: "TT" },
+  { id: "x", label: "X", mark: "X" },
+  { id: "facebook", label: "Facebook", mark: "f" },
+  { id: "threads", label: "Threads", mark: "@" },
+];
+
+type Device = {
+  serial: string; present?: boolean; ready?: boolean; usable?: boolean; using?: boolean;
+  manufacturer?: string; model?: string; marketName?: string; version?: string;
+  battery?: { level?: number; scale?: number };
+};
+type RunState = {
+  run_id: string; platform: string; target: string; status: string;
+  summary: { total: number; running: number; completed: number; error: number };
+};
+type MlPlan = {
+  plan_id: string; mode: string; execute: boolean;
+  decisions: { action: string; recommended: boolean; confidence: number; reason: string }[];
+  device_assignments: { serial: string; recommended_account: string | null; switch_required: boolean }[];
+  comment_suggestions: string[];
+  safety_gate: { passed: boolean; mass_engagement_disabled: boolean };
+};
+
+function headers(json = false): HeadersInit {
+  const result: Record<string, string> = {};
+  const token = window.localStorage.getItem(TOKEN_KEY);
+  if (token) result.Authorization = `Bearer ${token}`;
+  if (json) result["Content-Type"] = "application/json";
+  return result;
+}
+
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(path, { ...init, cache: "no-store" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.detail || "Permintaan gagal.");
+  return payload as T;
+}
+
+function deviceName(device: Device, index: number) {
+  return device.marketName || device.model || `Android ${index + 1}`;
+}
+
+function battery(device: Device) {
+  const level = device.battery?.level;
+  if (typeof level !== "number") return null;
+  return Math.round((level / (device.battery?.scale || 100)) * 100);
+}
+
+export default function ControlCenter() {
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [screens, setScreens] = useState<Record<string, string>>({});
+  const screenRef = useRef<Record<string, string>>({});
+  const refreshingScreens = useRef(false);
+  const [filter, setFilter] = useState<"all" | "online" | "offline">("all");
+  const [query, setQuery] = useState("");
+  const [tileWidth, setTileWidth] = useState(174);
+  const [frameSeconds, setFrameSeconds] = useState(30);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [automationOpen, setAutomationOpen] = useState(false);
+  const [platform, setPlatform] = useState("instagram");
+  const [target, setTarget] = useState("");
+  const [username, setUsername] = useState("akun-aktif");
+  const [tone, setTone] = useState("positif");
+  const [commentCount, setCommentCount] = useState(1);
+  const [maxPosts, setMaxPosts] = useState(1);
+  const [starting, setStarting] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [run, setRun] = useState<RunState | null>(null);
+  const [mlPlan, setMlPlan] = useState<MlPlan | null>(null);
+
+  const loadDevices = useCallback(async () => {
+    try {
+      const payload = await api<{ devices?: Device[] }>("/api/device-farm/devices", { headers: headers() });
+      setDevices(payload.devices || []);
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Farm tidak dapat dimuat.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDevices();
+    const timer = window.setInterval(() => void loadDevices(), 8000);
+    return () => window.clearInterval(timer);
+  }, [loadDevices]);
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return devices.filter((device, index) => {
+      const online = Boolean(device.present && device.ready);
+      if (filter === "online" && !online) return false;
+      if (filter === "offline" && online) return false;
+      return !needle || `${deviceName(device, index)} ${device.serial}`.toLowerCase().includes(needle);
+    });
+  }, [devices, filter, query]);
+
+  const refreshScreens = useCallback(async () => {
+    if (refreshingScreens.current) return;
+    refreshingScreens.current = true;
+    const online = visible.filter((device) => device.present && device.ready);
+    try {
+      for (let offset = 0; offset < online.length; offset += 2) {
+        await Promise.allSettled(online.slice(offset, offset + 2).map(async (device) => {
+          const response = await fetch(`/api/device-farm/devices/${encodeURIComponent(device.serial)}/screenshot`, {
+            cache: "no-store", headers: headers(),
+          });
+          if (!response.ok) return;
+          const url = URL.createObjectURL(await response.blob());
+          setScreens((current) => {
+            const previous = current[device.serial];
+            if (previous) URL.revokeObjectURL(previous);
+            const next = { ...current, [device.serial]: url };
+            screenRef.current = next;
+            return next;
+          });
+        }));
+      }
+    } finally {
+      refreshingScreens.current = false;
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    void refreshScreens();
+    const timer = window.setInterval(() => void refreshScreens(), frameSeconds * 1000);
+    return () => window.clearInterval(timer);
+  }, [frameSeconds, refreshScreens]);
+
+  useEffect(() => () => Object.values(screenRef.current).forEach((url) => URL.revokeObjectURL(url)), []);
+
+  useEffect(() => {
+    if (!run || run.status === "completed") return;
+    const timer = window.setInterval(async () => {
+      try {
+        setRun(await api<RunState>(`/api/farm-automation/runs/${run.run_id}`, { headers: headers() }));
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Status run gagal dimuat.");
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [run]);
+
+  const onlineCount = devices.filter((device) => device.present && device.ready).length;
+  const runningCount = run?.summary.running || 0;
+
+  function toggle(serial: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(serial)) next.delete(serial); else next.add(serial);
+      return next;
+    });
+  }
+
+  function selectAllOnline() {
+    const online = visible.filter((device) => device.present && device.ready).map((device) => device.serial);
+    setSelected((current) => current.size === online.length ? new Set() : new Set(online));
+  }
+
+  async function startAutomation() {
+    if (!target.trim() || selected.size === 0) {
+      setError("Pilih minimal satu perangkat dan isi target akun/halaman.");
+      return;
+    }
+    setStarting(true);
+    setError("");
+    try {
+      const started = await api<{ run_id: string }>("/api/farm-automation/runs", {
+        method: "POST", headers: headers(true),
+        body: JSON.stringify({ platform, device_serials: Array.from(selected), username, target, tone, comment_count: commentCount, max_posts: maxPosts }),
+      });
+      setRun(await api<RunState>(`/api/farm-automation/runs/${started.run_id}`, { headers: headers() }));
+      setAutomationOpen(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Otomasi gagal dimulai.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function previewMl() {
+    if (!target.trim() || selected.size === 0) {
+      setError("Pilih minimal satu perangkat dan isi konteks/target untuk analisis ML.");
+      return;
+    }
+    setAnalyzing(true);
+    setError("");
+    try {
+      const serials = Array.from(selected);
+      const accounts = serials.map((serial, index) => ({
+        account_id: `${username || "akun"}-${index + 1}`,
+        topics: [target],
+        success_rate: 0.5,
+        daily_actions: 0,
+        daily_limit: 20,
+        cooldown_minutes: 60,
+        minutes_since_last_use: 1440,
+        logged_in: true,
+      }));
+      setMlPlan(await api<MlPlan>("/api/farm-automation/ml/preview", {
+        method: "POST",
+        headers: headers(true),
+        body: JSON.stringify({
+          platform,
+          caption: target,
+          tone,
+          target_topics: [target],
+          recent_comments: [],
+          accounts,
+          device_serials: serials,
+          current_accounts: Object.fromEntries(serials.map((serial) => [serial, username])),
+        }),
+      }));
+      setAutomationOpen(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Analisis ML gagal.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  return (
+    <div className={styles.shell}>
+      <aside className={styles.sidebar}>
+        <div className={styles.logo}><span>G</span><strong>Godam Farm</strong></div>
+        <nav>
+          <button className={styles.activeNav}><span>▣</span>Control Center</button>
+          <p>FARM</p>
+          <button><span>▤</span>Devices <b>{onlineCount}</b></button>
+          <button onClick={() => setAutomationOpen(true)}><span>⚡</span>Automation</button>
+          <button><span>◴</span>Runs <b>{runningCount}</b></button>
+          <p>SYSTEM</p>
+          <a href="http://localhost:7100" target="_blank" rel="noreferrer"><span>⌘</span>STF Engine</a>
+          <a href="http://localhost:8000/docs" target="_blank" rel="noreferrer"><span>?</span>API & Docs</a>
+        </nav>
+        <div className={styles.engine}><i /><span><strong>STF engine aktif</strong><small>Godam worker terpasang</small></span></div>
+      </aside>
+
+      <main className={styles.main}>
+        <header className={styles.topbar}>
+          <div><p>DEVICEFARMER STF × GODAM</p><h1>Control Center</h1></div>
+          <div className={styles.topActions}>
+            <button onClick={() => void refreshScreens()}>↻ Refresh layar</button>
+            <button className={styles.primary} onClick={() => setAutomationOpen(true)}>＋ Automation</button>
+          </div>
+        </header>
+
+        <section className={styles.summary}>
+          <div><span className={styles.blueDot} /><strong>{onlineCount}</strong><small>Online</small></div>
+          <div><span className={styles.grayDot} /><strong>{devices.length - onlineCount}</strong><small>Offline</small></div>
+          <div><span className={styles.violetDot} /><strong>{selected.size}</strong><small>Dipilih</small></div>
+          <div><span className={styles.greenDot} /><strong>{runningCount}</strong><small>Automation aktif</small></div>
+        </section>
+
+        {error && <div className={styles.error}>{error}<button onClick={() => setError("")}>×</button></div>}
+
+        <section className={styles.toolbar}>
+          <div className={styles.tabs}>{(["all", "online", "offline"] as const).map((item) => <button key={item} className={filter === item ? styles.activeTab : ""} onClick={() => setFilter(item)}>{item === "all" ? "Semua" : item === "online" ? "Online" : "Offline"}</button>)}</div>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari device atau serial…" />
+          <button onClick={selectAllOnline}>{selected.size ? "Batalkan pilihan" : "Pilih semua online"}</button>
+        </section>
+
+        <section className={styles.content}>
+          <aside className={styles.settings}>
+            <h2>Tampilan</h2>
+            <label><span>Ukuran layar</span><input type="range" min="138" max="230" value={tileWidth} onChange={(e) => setTileWidth(Number(e.target.value))} /></label>
+            <label><span>Interval frame</span><input type="range" min="15" max="60" value={frameSeconds} onChange={(e) => setFrameSeconds(Number(e.target.value))} /></label>
+            <small>{frameSeconds} detik · hemat bandwidth</small>
+            <h2>Platform</h2>
+            <div className={styles.platformList}>{PLATFORM_OPTIONS.map((item) => <span key={item.id}><b>{item.mark}</b>{item.label}</span>)}</div>
+          </aside>
+
+          <div className={styles.devices} style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${tileWidth}px, 1fr))` }}>
+            {loading && <div className={styles.empty}>Menghubungkan ke STF…</div>}
+            {!loading && visible.length === 0 && <div className={styles.empty}>Belum ada perangkat pada filter ini.</div>}
+            {visible.map((device, index) => {
+              const online = Boolean(device.present && device.ready);
+              const checked = selected.has(device.serial);
+              const power = battery(device);
+              return (
+                <article key={device.serial} className={`${styles.phoneCard} ${checked ? styles.selectedCard : ""}`}>
+                  <button className={styles.selectDevice} onClick={() => toggle(device.serial)} disabled={!online} aria-label={`Pilih ${device.serial}`}>{checked ? "✓" : ""}</button>
+                  <div className={styles.phoneScreen}>
+                    {screens[device.serial] ? <img src={screens[device.serial]} alt={`Layar ${device.serial}`} /> : <div className={styles.placeholder}><span>{online ? "STF" : "OFF"}</span></div>}
+                    <span className={styles.usbBadge}>{online ? "USB" : "OFFLINE"}</span>
+                    {power !== null && <span className={styles.power}>{power}%</span>}
+                    {!online && <div className={styles.disconnected}>Disconnected</div>}
+                  </div>
+                  <div className={styles.phoneMeta}><strong>{deviceName(device, index)}</strong><span>{device.serial}</span><small>{device.version ? `Android ${device.version}` : online ? "Android" : "Tidak terhubung"}</small></div>
+                  {online && <a href={`http://localhost:7100/#!/control/${encodeURIComponent(device.serial)}`} target="_blank" rel="noreferrer">Kontrol ↗</a>}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        {run && <section className={styles.runPanel}><div><span className={styles.runIcon}>⚡</span><div><strong>{run.platform.toUpperCase()} · @{run.target}</strong><small>{run.summary.completed} selesai · {run.summary.running} berjalan · {run.summary.error} error</small></div></div><div className={styles.progress}><i style={{ width: `${run.summary.total ? ((run.summary.completed + run.summary.error) / run.summary.total) * 100 : 0}%` }} /></div><span>{run.status === "completed" ? "Selesai" : "Berjalan"}</span></section>}
+        {mlPlan && <section className={styles.runPanel}><div><span className={styles.runIcon}>ML</span><div><strong>ML DRY-RUN · {mlPlan.device_assignments.length} perangkat</strong><small>{mlPlan.decisions.map((item) => `${item.action}: ${Math.round(item.confidence * 100)}%`).join(" · ")} · {mlPlan.device_assignments.filter((item) => item.switch_required).length} switch akun direncanakan</small></div></div><div className={styles.progress}><i style={{ width: `${Math.round((mlPlan.decisions.reduce((sum, item) => sum + item.confidence, 0) / Math.max(1, mlPlan.decisions.length)) * 100)}%` }} /></div><span>Simulasi saja</span></section>}
+      </main>
+
+      {automationOpen && <div className={styles.overlay} onMouseDown={(event) => event.target === event.currentTarget && setAutomationOpen(false)}><section className={styles.modal}>
+        <header><div><p>GODAM AUTOMATION</p><h2>Auto Like & Comment</h2></div><button onClick={() => setAutomationOpen(false)}>×</button></header>
+        <p className={styles.modalIntro}>{selected.size} perangkat dipilih. STF akan mereservasi dan menjalankan aplikasi langsung pada setiap Android.</p>
+        <label>Platform<div className={styles.platformPicker}>{PLATFORM_OPTIONS.map((item) => <button key={item.id} className={platform === item.id ? styles.chosenPlatform : ""} onClick={() => setPlatform(item.id)}><b>{item.mark}</b>{item.label}</button>)}</div></label>
+        <div className={styles.formGrid}>
+          <label>Target akun/halaman<input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="contoh: natgeo" /></label>
+          <label>Identitas akun perangkat<input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="akun-aktif" /></label>
+          <label>Nada komentar<select value={tone} onChange={(e) => setTone(e.target.value)}><option value="positif">Positif</option><option value="netral">Netral</option><option value="negatif">Negatif</option></select></label>
+          <label>Post per perangkat<input type="number" min="1" max="25" value={maxPosts} onChange={(e) => setMaxPosts(Number(e.target.value))} /></label>
+          <label>Komentar per post<input type="number" min="1" max="20" value={commentCount} onChange={(e) => setCommentCount(Number(e.target.value))} /></label>
+        </div>
+        <footer><button onClick={() => setAutomationOpen(false)}>Batal</button><button onClick={() => void previewMl()} disabled={analyzing}>{analyzing ? "Menganalisis…" : `Preview ML ${selected.size} perangkat`}</button><button className={styles.primary} onClick={() => void startAutomation()} disabled={starting}>{starting ? "Menyiapkan farm…" : `Jalankan di ${selected.size} perangkat`}</button></footer>
+      </section></div>}
+    </div>
+  );
+}

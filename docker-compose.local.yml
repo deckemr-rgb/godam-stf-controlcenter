@@ -1,0 +1,57 @@
+# Overlay localhost. Gunakan bersama docker-compose.yml dan
+# docker-compose.stf.yml; Caddy production sengaja tidak dijalankan.
+
+services:
+  backend:
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      DEBUG: "true"
+      FRONTEND_URL: http://localhost:3000,http://127.0.0.1:3000
+      STF_PUBLIC_URL: http://localhost:7100
+      # Localhost dapat dipakai sebelum akun Godam dibuat. Jangan gunakan
+      # nilai false ini pada deployment yang dapat dijangkau dari internet.
+      STF_REQUIRE_GODAM_AUTH: "false"
+      # Pada Windows, satu ADB host menangani >8 perangkat tanpa batas port
+      # USB/IP WSL. STF tetap menjadi provider dan pemilik lifecycle device.
+      STF_ADB_HOST: host.docker.internal
+      STF_ADB_PORT: "5037"
+      # Vision API key remains server-side. Execution is opt-in and package-scoped.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_VISION_MODEL: ${OPENAI_VISION_MODEL:-gpt-4.1-mini}
+      VISION_TEST_ALLOWED_PACKAGES: ${VISION_TEST_ALLOWED_PACKAGES:-}
+      VISION_TEST_EXECUTION_ENABLED: ${VISION_TEST_EXECUTION_ENABLED:-false}
+
+  frontend:
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      BACKEND_API_URL: http://backend:8000
+
+  # Gunakan kunci ADB Windows yang sudah dipercaya oleh seluruh perangkat.
+  # Ini menghindari dialog RSA baru ketika USB dipindahkan ke WSL/STF.
+  stf-adb:
+    volumes:
+      - type: bind
+        source: ${USERPROFILE}/.android/adbkey
+        target: /root/.android/adbkey
+        read_only: true
+      - type: bind
+        source: ${USERPROFILE}/.android/adbkey.pub
+        target: /root/.android/adbkey.pub
+        read_only: true
+
+  stf-provider:
+    command: >-
+      stf provider --name godam-windows-farm --adb-host host.docker.internal
+      --adb-port 5037
+      --public-ip ${STF_PROVIDER_PUBLIC_IP:-127.0.0.1}
+      --min-port 7400 --max-port 7500
+      --storage-url http://stf-proxy:7100/
+      --connect-sub tcp://stf-triproxy-dev:7111
+      --connect-push tcp://stf-triproxy-dev:7113
+
+  # Service ini tetap ada agar merge dengan compose utama valid, tetapi hanya
+  # aktif jika profile production diminta secara eksplisit.
+  caddy:
+    profiles: ["production"]

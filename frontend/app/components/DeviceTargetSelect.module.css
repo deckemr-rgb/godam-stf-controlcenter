@@ -1,0 +1,40 @@
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field > span {
+  font-size: 13px;
+  font-weight: 700;
+  color: #d8deee;
+}
+
+.select {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: #121722;
+  color: #f4f7ff;
+  padding: 11px 12px;
+  font: inherit;
+  outline: none;
+}
+
+.select:focus {
+  border-color: #7c8cff;
+  box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.16);
+}
+
+.hint {
+  color: #8992a8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.active {
+  color: #72e6ae;
+}
+
+.warning {
+  color: #ffcb73;
+}

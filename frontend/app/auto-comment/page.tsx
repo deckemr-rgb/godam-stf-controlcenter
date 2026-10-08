@@ -1,0 +1,598 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import styles from "./page.module.css";
+import { bacaForm, simpanForm } from "../components/formStore";
+import DeviceTargetSelect from "../components/DeviceTargetSelect";
+
+type BotResult = {
+  comments_posted?: number;
+  posts_processed?: number;
+};
+
+type LiveStatus = {
+  token: string;
+  status: string;
+  message: string;
+  logs: string[];
+  result?: BotResult;
+};
+
+type CommentTone = "positif" | "netral" | "negatif";
+
+type FormValues = {
+  username: string;
+  session_id: string;
+  target: string;
+  comment_count: number;
+  max_posts: number;
+  tone: CommentTone;
+  device_serial: string;
+};
+
+// Satu "slot" bot: punya form, log, dan tampilan Chrome Live sendiri.
+type BotSlot = {
+  id: number;
+  values: FormValues;
+  token: string;
+  status: string;
+  message: string;
+  logs: string[];
+  result: BotResult | null;
+  frameUrl: string;
+  error: string;
+};
+
+const TONES: { value: CommentTone; icon: string; label: string; hint: string }[] = [
+  { value: "positif", icon: "😊", label: "Positif", hint: "Apresiasi & dukung (default)" },
+  { value: "netral", icon: "😐", label: "Netral", hint: "Datar, faktual, tanpa memuji" },
+  { value: "negatif", icon: "😕", label: "Negatif", hint: "Kritis & sopan, tanpa hinaan" },
+];
+
+// Tombol pintas jumlah bot. Angka di luar daftar ini tetap bisa diisi lewat
+// kotak angka di sebelahnya — server tidak lagi membatasi jumlah bot.
+const PILIHAN_CEPAT = [1, 2, 3, 4, 5];
+
+// Satu-satunya alasan masih ada angka maksimum di sini: setiap bot merender
+// satu form panjang beserta panel Chrome Live-nya, jadi angka ekstrem membuat
+// browser pengguna sendiri tersendat. Ini batas tampilan, bukan batas server.
+const MAX_BOTS = 50;
+const BOT_START_GAP_MS = 900;
+
+function initialValues(): FormValues {
+  return {
+    username: "",
+    session_id: "",
+    target: "",
+    comment_count: 1,
+    max_posts: 3,
+    tone: "positif",
+    device_serial: "",
+  };
+}
+
+function createBot(id: number): BotSlot {
+  return {
+    id,
+    values: initialValues(),
+    token: "",
+    status: "",
+    message: "",
+    logs: [],
+    result: null,
+    frameUrl: "",
+    error: "",
+  };
+}
+
+function isTerminal(status: string): boolean {
+  return status === "completed" || status === "error";
+}
+
+// Semua permintaan lewat proxy Next (path relatif), diteruskan ke backend.
+function apiUrl(path: string): string {
+  return path;
+}
+
+export default function Home() {
+  const [botCount, setBotCount] = useState(1);
+  const [bots, setBots] = useState<BotSlot[]>(() => [createBot(1)]);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState("");
+  const botsRef = useRef<BotSlot[]>(bots);
+
+  // ===== ISIAN TERSIMPAN PER AKUN =====
+  // Dimuat setelah render pertama supaya HTML server dan browser tetap sama.
+  useEffect(() => {
+    const requestedDevice = new URLSearchParams(window.location.search).get("device") || "";
+    const tersimpan = bacaForm<{ botCount: number; values: FormValues[] } | null>(
+      "auto-comment",
+      null as never
+    );
+    /* eslint-disable react-hooks/set-state-in-effect -- memulihkan isian
+       tersimpan hanya sekali saat halaman dibuka. Sengaja dilakukan setelah
+       render pertama, bukan lewat nilai awal useState, supaya HTML dari server
+       dan dari browser tetap sama (localStorage tidak ada di server). */
+    if (tersimpan?.values?.length) {
+      setBotCount(tersimpan.botCount || tersimpan.values.length);
+      setBots(
+        tersimpan.values.map((values, i) => ({
+          ...createBot(i + 1),
+          values: {
+            ...initialValues(),
+            ...values,
+            device_serial: i === 0 && requestedDevice ? requestedDevice : values.device_serial || "",
+          },
+        }))
+      );
+    } else if (requestedDevice) {
+      setBots([{ ...createBot(1), values: { ...initialValues(), device_serial: requestedDevice } }]);
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  // Penyimpanan sengaja dipicu dari aksi pengetikan, bukan dari useEffect:
+  // efek yang memantau state akan berjalan dengan nilai lama saat halaman baru
+  // dimuat dan justru menimpa isian tersimpan dengan nilai kosong.
+  const simpanIsian = useCallback((daftar: BotSlot[], jumlah: number) => {
+    simpanForm("auto-comment", { botCount: jumlah, values: daftar.map((b) => b.values) });
+  }, []);
+
+  const runningBots = bots.filter((bot) => bot.token && !isTerminal(bot.status));
+
+  // Simpan state terbaru di ref supaya polling & penutupan browser saat halaman
+  // ditutup tidak perlu memasang ulang interval terus-menerus.
+  useEffect(() => {
+    botsRef.current = bots;
+  }, [bots]);
+
+  // ===== TARIK STATUS SEMUA BOT =====
+  const tarikStatus = useCallback(async () => {
+    const active = botsRef.current.filter((bot) => bot.token && !isTerminal(bot.status));
+    if (active.length === 0) return;
+    await Promise.all(
+      active.map(async (bot) => {
+        try {
+          const res = await fetch(apiUrl(`/api/live/${bot.token}/status`), { cache: "no-store" });
+          const data: LiveStatus = await res.json();
+          setBots((current) =>
+            current.map((item) =>
+              item.token === bot.token
+                ? {
+                    ...item,
+                    status: data.status,
+                    message: data.message || "",
+                    logs: Array.isArray(data.logs) ? data.logs : item.logs,
+                    result: data.result ?? item.result,
+                  }
+                : item
+            )
+          );
+        } catch {
+          // sementara
+        }
+      })
+    );
+  }, []);
+
+  // ===== SEGARKAN TAMPILAN CHROME LIVE TIAP BOT =====
+  const segarkanFrame = useCallback(() => {
+    setBots((current) =>
+      current.map((bot) =>
+        bot.token && !isTerminal(bot.status)
+          ? { ...bot, frameUrl: `${apiUrl(`/api/live/${bot.token}/frame`)}?t=${Date.now()}` }
+          : bot
+      )
+    );
+  }, []);
+
+  // Saat tab disembunyikan (ganti tab/jendela) polling berhenti agar server
+  // hemat; begitu kembali dilihat, data langsung ditarik ulang supaya tidak
+  // terlihat "beku".
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) return;
+      void tarikStatus();
+      segarkanFrame();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [tarikStatus, segarkanFrame]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      // Status tetap diambil walau tab disembunyikan (murah & supaya log selalu
+      // benar); yang dihemat saat tab tidak dilihat hanya minta frame gambar.
+      void tarikStatus();
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [tarikStatus]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      segarkanFrame();
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [segarkanFrame]);
+
+  // Tutup semua Chromium di backend otomatis saat halaman ditutup/di-refresh,
+  // supaya browser tidak menggantung & memori tidak menumpuk.
+  useEffect(() => {
+    const closeOnUnload = () => {
+      botsRef.current.forEach((bot) => {
+        if (!bot.token) return;
+        try {
+          navigator.sendBeacon(apiUrl(`/api/live/${bot.token}/close`), "");
+        } catch {
+          // abaikan
+        }
+      });
+    };
+    window.addEventListener("beforeunload", closeOnUnload);
+    return () => {
+      window.removeEventListener("beforeunload", closeOnUnload);
+    };
+  }, []);
+
+  // ===== UBAH JUMLAH BOT (isian bot yang sudah ada tetap dipertahankan) =====
+  function changeBotCount(count: number) {
+    const next = Math.min(MAX_BOTS, Math.max(1, Number(count) || 1));
+    const list = botsRef.current.slice(0, next);
+    while (list.length < next) list.push(createBot(list.length + 1));
+    const baru = list.map((bot, index) => ({ ...bot, id: index + 1 }));
+    setBotCount(next);
+    setBots(baru);
+    simpanIsian(baru, next);
+    setError("");
+  }
+
+  function updateField(index: number, field: keyof FormValues, value: string | number) {
+    const baru = botsRef.current.map((bot, i) =>
+      i === index ? { ...bot, values: { ...bot.values, [field]: value } } : bot
+    );
+    setBots(baru);
+    simpanIsian(baru, baru.length);
+  }
+
+  function validate(values: FormValues): string {
+    if (!values.username.trim() || !values.target.trim()) {
+      return "Nama akun dan Channel wajib diisi.";
+    }
+    if (!values.device_serial && !values.session_id.trim()) {
+      return "Session ID wajib untuk mode browser server, atau pilih perangkat STF.";
+    }
+    if (!Number.isInteger(values.comment_count) || values.comment_count < 1 || values.comment_count > 100) {
+      return "Jumlah komentar harus angka 1-100.";
+    }
+    if (!Number.isInteger(values.max_posts) || values.max_posts < 1 || values.max_posts > 50) {
+      return "Jumlah postingan harus angka 1-50.";
+    }
+    return "";
+  }
+
+  // Satu tombol untuk semua bot. Bot dikirim satu per satu dengan jeda pendek
+  // supaya backend tidak membuka banyak Chromium secara serampangan.
+  async function startAll() {
+    setError("");
+    const errors = bots.map((bot) => validate(bot.values));
+    if (errors.some((message) => message)) {
+      setBots((current) => current.map((bot, i) => ({ ...bot, error: errors[i] })));
+      setError("Masih ada form bot yang belum lengkap.");
+      return;
+    }
+
+    setStarting(true);
+    setBots((current) =>
+      current.map((bot) => ({
+        ...bot,
+        error: "",
+        token: "",
+        status: "starting",
+        message: "Menyiapkan browser...",
+        logs: [],
+        result: null,
+        frameUrl: "",
+      }))
+    );
+
+    for (const bot of bots) {
+      try {
+        const res = await fetch(apiUrl("/api/live/start"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bot.values),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Gagal memulai.");
+        setBots((current) =>
+          current.map((item) => (item.id === bot.id ? { ...item, token: data.token } : item))
+        );
+      } catch (err) {
+        const text = err instanceof Error ? err.message : "Gagal memulai.";
+        setBots((current) =>
+          current.map((item) =>
+            item.id === bot.id ? { ...item, error: text, status: "error", message: text } : item
+          )
+        );
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, BOT_START_GAP_MS));
+    }
+
+    setStarting(false);
+  }
+
+  async function stopBot(index: number) {
+    const bot = botsRef.current[index];
+    if (!bot?.token) return;
+    try {
+      await fetch(apiUrl(`/api/live/${bot.token}/close`), { method: "POST" });
+    } catch {
+      // abaikan
+    }
+    setBots((current) =>
+      current.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              token: "",
+              status: "",
+              message: "",
+              logs: [],
+              result: null,
+              frameUrl: "",
+              error: "",
+            }
+          : item
+      )
+    );
+  }
+
+  return (
+    <div className={styles.page}>
+      <header className={styles.topbar}>
+        <Link href="/" className={styles.backHome} title="Kembali ke beranda">←</Link>
+        <span className={styles.brand}>IG · AUTO COMMENT</span>
+        <span className={styles.headStatus}>
+          {runningBots.length > 0 ? `${runningBots.length} bot berjalan` : "idle"}
+        </span>
+      </header>
+
+      <main className={styles.main}>
+        {/* PANEL KONTROL: pilih jumlah bot + satu tombol Mulai untuk semuanya */}
+        <section className={styles.controlPanel}>
+          <div className={styles.botCountRow}>
+            <span className={styles.botCountLabel}>Jumlah bot yang dijalankan</span>
+            <div className={styles.botCountOptions}>
+              <div className={styles.botCountQuick} role="radiogroup" aria-label="Pilihan cepat jumlah bot">
+                {PILIHAN_CEPAT.map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    role="radio"
+                    aria-checked={botCount === count}
+                    className={`${styles.botCountBtn} ${
+                      botCount === count ? styles.botCountBtnActive : ""
+                    }`}
+                    onClick={() => changeBotCount(count)}
+                  >
+                    {count}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.botCountStepper}>
+                <button
+                  type="button"
+                  className={styles.botCountBtn}
+                  onClick={() => changeBotCount(botCount - 1)}
+                  disabled={botCount <= 1}
+                  aria-label="Kurangi satu bot"
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  className={styles.botCountInput}
+                  min={1}
+                  max={MAX_BOTS}
+                  value={botCount}
+                  onChange={(event) => changeBotCount(Number(event.target.value))}
+                  aria-label="Jumlah bot"
+                />
+                <button
+                  type="button"
+                  className={styles.botCountBtn}
+                  onClick={() => changeBotCount(botCount + 1)}
+                  disabled={botCount >= MAX_BOTS}
+                  aria-label="Tambah satu bot"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <h1>Jalankan Bot</h1>
+          <p className={styles.formSub}>
+            Login otomatis cukup pakai Session ID — tanpa CAPTCHA. Satu tombol Mulai untuk {" "}
+            {botCount} bot sekaligus.
+          </p>
+          {botCount > PILIHAN_CEPAT.length && (
+            <p className={styles.warnNote}>
+              Semua bot berbagi <strong>1 browser</strong> (hemat memori), jadi menjalankan
+              banyak bot sekaligus tidak masalah. Yang perlu diingat hanya satu: makin banyak
+              bot, makin panjang halaman ini.
+            </p>
+          )}
+          {error && <p className={styles.error} role="alert">{error}</p>}
+          <button
+            className={styles.startBtn}
+            type="button"
+            onClick={startAll}
+            disabled={starting || runningBots.length > 0}
+          >
+            {starting ? "Menyiapkan..." : runningBots.length > 0 ? "Berjalan..." : `Mulai ${botCount} bot`}
+          </button>
+        </section>
+
+        {/* SATU KARTU PER BOT: form + log + tampilan Chrome Live sendiri */}
+        <section className={styles.botGrid}>
+          {bots.map((bot, index) => (
+            <article key={bot.id} className={styles.botCard}>
+              <div className={styles.botHeader}>
+                <h2>Bot {bot.id}</h2>
+                <span className={`${styles.statusBadge} ${bot.status ? styles[bot.status] || "" : ""}`}>
+                  {bot.status || "idle"}
+                </span>
+              </div>
+
+              <div className={styles.panelRow}>
+                {/* KIRI: form bot ini */}
+                <form className={styles.form} onSubmit={(e) => e.preventDefault()}>
+                  <DeviceTargetSelect
+                    value={bot.values.device_serial}
+                    onChange={(serial) => updateField(index, "device_serial", serial)}
+                    disabled={starting || !!bot.token}
+                  />
+                  <label>
+                    <span>Nama akun Instagram</span>
+                    <input
+                      value={bot.values.username}
+                      onChange={(e) => updateField(index, "username", e.target.value)}
+                      placeholder="mis. topmengudara"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label>
+                    <span>Session ID {bot.values.device_serial ? "(tidak dipakai di perangkat STF)" : ""}</span>
+                    <input
+                      value={bot.values.session_id}
+                      onChange={(e) => updateField(index, "session_id", e.target.value)}
+                      placeholder="tempel sessionid cookie"
+                      autoComplete="off"
+                      disabled={!!bot.values.device_serial}
+                    />
+                  </label>
+                  <label>
+                    <span>Channel target</span>
+                    <input
+                      value={bot.values.target}
+                      onChange={(e) => updateField(index, "target", e.target.value)}
+                      placeholder="mis. tv.mediagaul"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label>
+                    <span>Jumlah komentar / postingan</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={bot.values.comment_count}
+                      onChange={(e) => updateField(index, "comment_count", Number(e.target.value))}
+                    />
+                  </label>
+                  <label>
+                    <span>Postingan terbaru yang dikomentari</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={bot.values.max_posts}
+                      onChange={(e) => updateField(index, "max_posts", Number(e.target.value))}
+                    />
+                  </label>
+                  <fieldset className={styles.toneGroup}>
+                    <legend>Jenis komentar</legend>
+                    <div className={styles.toneOptions} role="radiogroup" aria-label="Jenis komentar">
+                      {TONES.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={bot.values.tone === option.value}
+                          title={option.hint}
+                          className={`${styles.toneCard} ${
+                            bot.values.tone === option.value ? styles.toneCardActive : ""
+                          }`}
+                          onClick={() => updateField(index, "tone", option.value)}
+                        >
+                          <span className={styles.toneIcon}>{option.icon}</span>
+                          <span className={styles.toneLabel}>{option.label}</span>
+                          <span className={styles.toneHint}>{option.hint}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {bot.values.tone === "negatif" && (
+                      <p className={styles.toneNote}>
+                        Komentar negatif tetap sopan: kritik ke isi kontennya, tanpa hinaan, SARA, atau hoaks.
+                      </p>
+                    )}
+                  </fieldset>
+                  {bot.error && <p className={styles.error} role="alert">{bot.error}</p>}
+                </form>
+
+                {/* KANAN: log bot ini */}
+                <aside className={styles.logPanel}>
+                  <div className={styles.logHeader}>
+                    <h2>Log</h2>
+                    <span className={`${styles.statusBadge} ${bot.status ? styles[bot.status] || "" : ""}`}>
+                      {bot.status || "idle"}
+                    </span>
+                  </div>
+                  <div className={styles.logBody}>
+                    {bot.logs.length === 0 ? (
+                      <p className={styles.logEmpty}>Belum ada log.</p>
+                    ) : (
+                      bot.logs.map((line, i) => (
+                        <p key={i} className={styles.logLine}>{line}</p>
+                      ))
+                    )}
+                  </div>
+                  {bot.result && (
+                    <div className={styles.result}>
+                      <strong>{bot.result.comments_posted ?? 0}</strong>
+                      <span>komentar</span>
+                      <strong>{bot.result.posts_processed ?? 0}</strong>
+                      <span>postingan</span>
+                    </div>
+                  )}
+                </aside>
+              </div>
+
+              {/* BAWAH: chrome live bot ini */}
+              {bot.token && (
+                <section className={styles.livePanel}>
+                  <div className={styles.liveHeader}>
+                    <h2>{bot.values.device_serial ? "Perangkat STF Live" : "Chrome Live"}</h2>
+                    <p>{bot.message}</p>
+                    {!isTerminal(bot.status) ? (
+                      <button className={styles.stopBtn} onClick={() => stopBot(index)}>
+                        Stop
+                      </button>
+                    ) : (
+                      <button className={styles.closeBtn} onClick={() => stopBot(index)}>Tutup</button>
+                    )}
+                  </div>
+                  <div className={styles.liveStage}>
+                    {bot.frameUrl ? (
+                      <img
+                        src={bot.frameUrl}
+                        alt={`Chrome live bot ${bot.id}`}
+                        className={styles.liveFrame}
+                        draggable={false}
+                      />
+                    ) : (
+                      <p className={styles.liveHint}>Menunggu frame...</p>
+                    )}
+                  </div>
+                </section>
+              )}
+            </article>
+          ))}
+        </section>
+      </main>
+    </div>
+  );
+}

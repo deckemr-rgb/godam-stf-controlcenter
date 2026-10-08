@@ -1,0 +1,82 @@
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin: 18px auto 0;
+  padding: 10px 18px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid #2a3a2e;
+  border-radius: 999px;
+  background: #161a17;
+}
+
+.stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 13px;
+}
+
+.value {
+  font-size: 17px;
+  font-weight: 800;
+  color: #7fe0a0;
+  font-variant-numeric: tabular-nums;
+  min-width: 12px;
+}
+
+.label {
+  color: #9aa89f;
+  font-weight: 600;
+}
+
+.sep {
+  width: 1px;
+  align-self: stretch;
+  background: #2a3a2e;
+}
+
+.icon {
+  font-size: 14px;
+  line-height: 1;
+  align-self: center;
+}
+
+/* Titik status: abu-abu saat belum ada jawaban backend, hijau berdenyut saat hidup. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4a534c;
+  align-self: center;
+}
+
+.dotLive {
+  background: #3fce6f;
+  box-shadow: 0 0 0 0 rgba(63, 206, 111, 0.55);
+  animation: pulse 2s ease-out infinite;
+}
+
+@keyframes pulse {
+  70% {
+    box-shadow: 0 0 0 8px rgba(63, 206, 111, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(63, 206, 111, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dotLive {
+    animation: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .sep {
+    display: none;
+  }
+}

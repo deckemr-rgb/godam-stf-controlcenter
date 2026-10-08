@@ -1,0 +1,7 @@
+vendor/
+node_modules/
+__pycache__/
+*.pyc
+.env*
+work/
+.next/

@@ -1,0 +1,90 @@
+GODAM STF - LOCAL COMMAND CENTER REPAIR
+Date: 2026-10-08 (Asia/Jakarta)
+Workspace: D:\GodamSTF-ControlCenter\app
+Dashboard: http://localhost:3000/device-farm
+
+SCOPE DELIVERED
+One dashboard with device grid, read-only STF/ADB diagnostics, run history and
+per-device logs, simulation-only Godam preview, and embedded original STF UI.
+STF remains the device engine. This is not a complete GenFarmer implementation.
+No proprietary GenFarmer code was reverse engineered or copied in this repair.
+
+ROOT CAUSES OBSERVED
+Run 7e3fa1e8d11345f6b29e6a7fc23cbe1e was labeled completed despite six worker
+errors and ten workers reporting comments_posted=0. None establishes verified
+social engagement. Two workers reported a device busy/unavailable error; four
+reported an unreadable Android accessibility tree. Screens in the supplied
+image were at different application states. Connectivity alone does not prove
+an app's screen, authentication, selector, or network is suitable for a task.
+
+REPAIRS
+1. Run reporting distinguishes error, stopped, no_comments_recorded and
+   unverified. Completed means worker lifecycle only, not successful engagement.
+   Session tokens are excluded from reports. Terminal reports read by the panel
+   are saved to the persistent comment-state volume (farm-reports directory).
+   The existing run was explicitly archived before backend replacement.
+2. Screenshot refresh no longer restarts every time inventory objects change.
+   Only two capture requests run concurrently; server slot acquisition is
+   bounded and overload returns HTTP 429 / Retry-After instead of blocking
+   indefinitely. Frame timestamps/errors are visible; requests are aborted on
+   panel changes and object URLs disposed. Revoked frames from an old panel
+   lifecycle are not reused. Images use contain instead of cropping the screen.
+3. Polling schedules its next request after completion with a 30-second client
+   timeout. Action errors are not cleared by unrelated successful inventory
+   refreshes. STF health reflects real API responses, not a permanent green dot.
+4. Device selection respects actual membership of the visible filter. Ready,
+   preparing, offline and reserved states are separated. Navigation works on
+   narrow screens and report panels do not cover the device grid.
+5. STF is displayed inside the dashboard. The obsolete /#!/control/ route was
+   replaced with /#/control/ and the backend-configured public URL is used.
+6. Simulation no longer invents logged-in accounts or matches a target against
+   itself. It displays raw heuristic scores, not success percentages; it sends
+   no device IDs or account assignments. Metadata explicitly says the model is
+   uncalibrated and feedback is in-memory only. Blank context is rejected.
+   The new dashboard does not expose the previous mass-engagement start button.
+7. Local CORS is restricted to configured frontend origins, including in debug
+   mode. This is not a complete security audit or internet-hardening exercise.
+8. Launcher supports older PowerShell random-byte APIs and adds Docker's helper
+   folder to PATH. A healthy existing ADB server is retained; the launcher no
+   longer kills every ADB process or detaches arbitrary USB/IP devices.
+
+VERIFICATION
+- Production Next.js build and TypeScript check passed.
+- ESLint passed for device-farm page, API proxy and root layout.
+- 26 backend unit/API tests passed, including error reporting, persistent
+  history, invalid input, screenshot capacity/timeout, read-only diagnostics,
+  authentication checks and debug-mode CORS restrictions.
+- Live diagnostics after deployment: STF reachable, ADB reachable, 16/16 ready.
+- Browser DOM verification at approximately 02:58 WIB: all 16 device images
+  had completed loading with nonzero natural width. The final full capture
+  cycle returned 16 HTTP 200 responses. Screenshot overload during rapid
+  reload/filter tests returned a visible retry state and recovered afterward.
+- Old run survived two backend replacements and reports needs_review,
+  six errors, ten zero-comment results, zero verified results.
+- Browser QA: diagnostic table, historical log panel, simulation-only form,
+  embedded STF device list, select-all, search, clear selection and filtered
+  deselection (16 -> 15) worked. No console errors observed in the sampled log.
+- PowerShell launch scripts passed syntax parsing. Full startup was not rerun
+  because it would touch services outside the frontend/backend deployment.
+
+LIMITATIONS / NOT CLAIMED
+- The failing social engagement assignments have NOT been made successful.
+  Selectors, public posting, bulk likes/comments/shares and automatic account
+  switching were not improved or executed. Existing legacy worker endpoints
+  were not removed; the new dashboard provides diagnostics/manual STF controls
+  and an explicitly non-executing simulation.
+- No real-account login inventory or trained ML model is provided.
+- Stop control calls the existing cooperative-stop endpoint. It is not a
+  verified emergency stop for an already-running Android operation and was
+  not exercised against live jobs during this repair.
+- History persistence covers terminal reports captured by GET/list polling.
+  A process crash before capture can still lose an in-flight run.
+- No full feature parity with GenFarmer, cross-platform selector validation,
+  long-duration soak test, or guarantee that all bugs are eliminated.
+- Backend/frontend remain loopback services. ADB is reachable by Docker via
+  the Windows host; do not expose this development stack to the internet.
+
+BACKUP / ROLLBACK MATERIAL
+audit/before-repair contains the original dashboard and backend integration
+files. audit/run-before-repair.json is a token-stripped snapshot of the old run.
+No device/account data, Docker volumes, or repositories were deleted.

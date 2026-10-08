@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+celery
+redis
+httpx
+playwright
+python-multipart
+python-dotenv
+cryptography
