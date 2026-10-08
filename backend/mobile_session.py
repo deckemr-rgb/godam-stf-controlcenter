@@ -1022,6 +1022,19 @@ class MobileSession:
                 # yang punya rail aksi (like/komentar/share).
                 self._open_first_post()
                 time.sleep(1)
+                # Bila ponsel mendarat di akun pribadi/kosong (mis. lewat
+                # konten yang dikolaborasi), like/komentar mustahil dilakukan;
+                # beri tahu operator dengan jelas.
+                try:
+                    nodes = self._nodes()
+                    joined = " | ".join(node.label for node in nodes)
+                    if re.search(r"bersifat pribadi|this account is private", joined, re.IGNORECASE):
+                        self.add_log(
+                            "Konten yang terbuka bersifat pribadi/kosong; "
+                            "like dan komentar pada postingan ini dilewati."
+                        )
+                except MobileAutomationError:
+                    pass
                 self._adb(
                     "shell", "input", "tap",
                     str(self.width // 2), str(self.height // 2),
